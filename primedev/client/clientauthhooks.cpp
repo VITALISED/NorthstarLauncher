@@ -37,8 +37,8 @@ char*, __fastcall, ())
 	// return a dummy token for northstar servers that don't need the session token stuff
 	// base it off serverfilter cvar since ns_is_northstar_server could be unset by an evil server
 	// we'll get dropped if they're faking it
-	// if (g_pCVar->FindVar("serverfilter")->GetBool() && g_pMasterServerManager->m_sOwnClientAuthToken[0])
-	// 	return pDummy3P;
+	if (g_pCVar->FindVar("serverfilter")->GetBool() && g_pMasterServerManager->m_sOwnClientAuthToken[0])
+		return pDummy3P;
 
 	return Auth3PToken();
 }

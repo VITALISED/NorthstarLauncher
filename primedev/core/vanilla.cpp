@@ -20,7 +20,7 @@ bool VanillaCompatibility::GetVanillaCompatibility()
 		CCommand tempCommand = *(CCommand*)&commandBuf;
 		CCommand__Tokenize(tempCommand, "disconnect \"Server outdated or evil!\"", cmd_source_t::kCommandSrcCode);
 		_Cmd_Exec_f(tempCommand, false, false);
-
+		Cbuf_Execute();
 		return false;
 	}
 
