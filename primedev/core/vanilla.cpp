@@ -14,7 +14,12 @@ bool VanillaCompatibility::GetVanillaCompatibility()
 		if (Cvar_ns_skip_vanilla_integrity_check->GetBool())
 			return false;
 
-		Cbuf_AddText(Cbuf_GetCurrentPlayer(), "disconnect \"Server is outdated or evil\"", cmd_source_t::kCommandSrcCode);
+		// directly call _Cmd_Exec_f to avoid weird cbuf crashes
+		char* commandBuf[1040];
+		memset(commandBuf, 0, sizeof(commandBuf));
+		CCommand tempCommand = *(CCommand*)&commandBuf;
+		CCommand__Tokenize(tempCommand, "disconnect \"Server outdated or evil!\"", cmd_source_t::kCommandSrcCode);
+		_Cmd_Exec_f(tempCommand, false, false);
 
 		return false;
 	}

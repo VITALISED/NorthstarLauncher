@@ -1,0 +1,7 @@
+{
+    "files.associations": {
+        "*.menu": "plaintext",
+        "filesystem": "cpp",
+        "xstring": "cpp"
+    }
+}

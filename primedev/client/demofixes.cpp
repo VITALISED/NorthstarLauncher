@@ -20,6 +20,7 @@ ON_DLL_LOAD_CLIENT_RELIESON("client.dll", ClientDemoFixes, ConVar, (CModule modu
 	Cvar_demo_writeLocalFile->SetValue(true);
 
 	ConVar* Cvar_demo_autoRecord = g_pCVar->FindVar("demo_autoRecord");
+	Cvar_demo_autoRecord->AddFlags(FCVAR_ARCHIVE_PLAYERPROFILE);
 	Cvar_demo_autoRecord->m_pszDefaultValue = "0";
 	Cvar_demo_autoRecord->SetValue(false);
 }

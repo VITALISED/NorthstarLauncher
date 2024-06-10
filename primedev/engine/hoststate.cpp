@@ -18,7 +18,6 @@ ConVar* Cvar_ns_is_northstar_server;
 std::string sLastMode;
 
 VAR_AT(engine.dll + 0x13FA6070, ConVar*, Cvar_hostport);
-FUNCTION_AT(engine.dll + 0x1232C0, void, __fastcall, _Cmd_Exec_f, (const CCommand& arg, bool bOnlyIfExists, bool bUseWhitelists));
 
 void ServerStartingOrChangingMap()
 {
@@ -136,9 +135,9 @@ void, __fastcall, (CHostState* self))
 	spdlog::info("HostState: GameShutdown");
 
 	g_pServerPresence->DestroyPresence();
+	Cvar_ns_is_northstar_server->SetValue(false);
 
 	CHostState__State_GameShutdown(self);
-	Cvar_ns_is_northstar_server->SetValue(false);
 
 	// run gamemode cleanup cfg now instead of when we start next map
 	if (sLastMode.length())
