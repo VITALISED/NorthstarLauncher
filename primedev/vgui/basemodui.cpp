@@ -92,7 +92,7 @@ void, __fastcall, (__int64 thisptr))
 		double t = Plat_FloatTime();
 		float dt = t - *g_flLastUpdateTime;
 
-		spdlog::info("Loading to: {:03.2f}", flPerc);
+		// spdlog::info("Loading to: {:03.2f}", flPerc);
 
 		if (flPerc == 1.0)
 			*(float*)(loadingBar + 620) = 1.0;
