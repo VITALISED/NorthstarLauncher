@@ -1,10 +1,10 @@
 #include "core/convar/convar.h"
+#include "core/tier0.h"
 #include "mods/modmanager.h"
+#include "r2engine.h"
+#include "shared/misccommands.h"
 #include "util/printcommands.h"
 #include "util/printmaps.h"
-#include "shared/misccommands.h"
-#include "r2engine.h"
-#include "core/tier0.h"
 
 AUTOHOOK_INIT()
 
@@ -22,9 +22,12 @@ void, __fastcall, (bool bDedicated))
 	// client/server autoexecs on necessary platforms
 	// dedi needs autoexec_ns_server on boot, while non-dedi will run it on on listen server start
 	if (bDedicated)
-		Cbuf_AddText(Cbuf_GetCurrentPlayer(), "exec autoexec_ns_server", cmd_source_t::kCommandSrcCode);
+		Cbuf_AddText(Cbuf_GetCurrentPlayer(), "exec autoexec_ns_dedicatedserver", cmd_source_t::kCommandSrcCode);
 	else
+	{
 		Cbuf_AddText(Cbuf_GetCurrentPlayer(), "exec autoexec_ns_client", cmd_source_t::kCommandSrcCode);
+		Cbuf_AddText(Cbuf_GetCurrentPlayer(), "exec autoexec_ns_listenserver", cmd_source_t::kCommandSrcCode);
+	}
 }
 
 ON_DLL_LOAD("engine.dll", Host_Init, (CModule module))

@@ -1,5 +1,6 @@
 #include "engine/hoststate.h"
 #include "core/tier0.h"
+#include "dedicated/dedicated.h"
 #include "engine/r2engine.h"
 #include "masterserver/masterserver.h"
 #include "plugins/pluginmanager.h"
@@ -62,7 +63,11 @@ void, __fastcall, (CHostState* self))
 {
 	spdlog::info("HostState: NewGame");
 
-	Cbuf_AddText(Cbuf_GetCurrentPlayer(), "exec autoexec_ns_server", cmd_source_t::kCommandSrcCode);
+	if (IsDedicatedServer())
+		Cbuf_AddText(Cbuf_GetCurrentPlayer(), "exec autoexec_ns_dedicatedserver", cmd_source_t::kCommandSrcCode);
+	else
+		Cbuf_AddText(Cbuf_GetCurrentPlayer(), "exec autoexec_ns_listenserver", cmd_source_t::kCommandSrcCode);
+
 	Cbuf_Execute();
 
 	// need to do this to ensure we don't go to private match
@@ -94,7 +99,11 @@ void, __fastcall, (CHostState* self))
 
 	spdlog::info("HostState: LoadGame");
 
-	Cbuf_AddText(Cbuf_GetCurrentPlayer(), "exec autoexec_ns_server", cmd_source_t::kCommandSrcCode);
+	if (IsDedicatedServer())
+		Cbuf_AddText(Cbuf_GetCurrentPlayer(), "exec autoexec_ns_dedicatedserver", cmd_source_t::kCommandSrcCode);
+	else
+		Cbuf_AddText(Cbuf_GetCurrentPlayer(), "exec autoexec_ns_listenserver", cmd_source_t::kCommandSrcCode);
+
 	Cbuf_Execute();
 
 	// this is normally done in ServerStartingOrChangingMap(), but seemingly the map name isn't set at this point
