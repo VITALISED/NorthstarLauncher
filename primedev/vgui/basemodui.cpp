@@ -1,5 +1,6 @@
 #include "vgui/basemodui.h"
 #include "core/tier0.h"
+#include "server/auth/serverauthentication.h"
 
 AUTOHOOK_INIT()
 
@@ -49,10 +50,7 @@ LoadingProgressDescription_t g_RemoteConnectLoadingProgressDescriptions[] = {
 };
 
 static LoadingProgressDescription_t* g_pLoadingProgressDescriptions = g_RemoteConnectLoadingProgressDescriptions;
-
-FUNCTION_AT(client.dll + 0x4CD950, void, __fastcall, BaseModUI__LoadingProgress__DrawLoadingBar, (__int64 thisptr));
-VAR_AT(engine.dll + 0x14055B94, float*, g_flLastUpdateTime);
-
+float g_flLastUpdateTime = 0.0f;
 vgui::ContinuousProgressBar* loadingBar;
 vgui::Label* loadingText;
 int m_nLastProgressPointRepeatCount;
@@ -82,17 +80,14 @@ AUTOHOOK(BaseModUI__LoadingProgress__PaintBackground, client.dll + 0x4CEB20,
 void, __fastcall, (__int64 thisptr))
 // clang-format on
 {
-	float m_flPeakProgress = *(float*)(thisptr + 0x734);
 	vgui::Panel* loadingRes = reinterpret_cast<vgui::Panel*>(thisptr);
-	loadingBar = reinterpret_cast<vgui::ContinuousProgressBar*>(vgui_Panel_FindChildByName(loadingRes, "LoadingProgressBar", true));
-	loadingText = reinterpret_cast<vgui::Label*>(vgui_Panel_FindChildByName(loadingRes, "LoadingLabelInfo", true));
+	loadingBar = reinterpret_cast<vgui::ContinuousProgressBar*>(vgui_Panel_FindChildByName(loadingRes, "LoadingProgressBar", false));
+	loadingText = reinterpret_cast<vgui::Label*>(vgui_Panel_FindChildByName(loadingRes, "LoadingLabelInfo", false));
 
 	if (loadingBar)
 	{
 		double t = Plat_FloatTime();
-		float dt = t - *g_flLastUpdateTime;
-
-		// spdlog::info("Loading to: {:03.2f}", flPerc);
+		float dt = t - g_flLastUpdateTime;
 
 		if (flPerc == 1.0)
 			*(float*)(loadingBar + 620) = 1.0;
@@ -126,6 +121,7 @@ void WaitForFadeout()
 	flPerc = 0;
 	m_eLastProgressPoint = PROGRESS_NONE;
 	m_nLastProgressPointRepeatCount = 0;
+	g_flLastUpdateTime = 0;
 }
 
 // clang-format off
@@ -135,17 +131,14 @@ void, __fastcall, (__int64 thisptr, int a2))
 {
 	FadeOutFunc(thisptr, a2);
 
-	if (loadingBar)
+	if (loadingBar && flPerc == 1.0)
 	{
 		FadeOutFunc((__int64)loadingBar, a2);
-		if (flPerc == 1.0)
-		{
-			std::thread t1(WaitForFadeout);
-			t1.detach();
-		}
+		std::thread t1(WaitForFadeout);
+		t1.detach();
 	}
 
-	if (loadingText)
+	if (loadingText && flPerc == 1.0)
 	{
 		FadeOutFunc((__int64)loadingText, a2);
 	}
@@ -160,11 +153,16 @@ __int64, __fastcall, (__int64 a1, LevelLoadingProgress_e progress))
 	if (progress < m_eLastProgressPoint)
 		return CEngineVGui__UpdateProgressBar(a1, progress);
 
+	if (g_pServerAuthentication->m_bStartingLocalSPGame)
+		g_pLoadingProgressDescriptions = g_ListenServerLoadingProgressDescriptions;
+	else
+		g_pLoadingProgressDescriptions = g_RemoteConnectLoadingProgressDescriptions;
+
 	bool bNewCheckpoint = progress != m_eLastProgressPoint;
 
 	// Early time-based throttle for UpdateProgressBar
 	double t = Plat_FloatTime();
-	float dt = t - *g_flLastUpdateTime;
+	float dt = t - g_flLastUpdateTime;
 	if ((!bNewCheckpoint && (dt < 0.050000001)))
 	{
 		return CEngineVGui__UpdateProgressBar(a1, progress);
@@ -191,7 +189,7 @@ __int64, __fastcall, (__int64 a1, LevelLoadingProgress_e progress))
 	}
 
 	m_eLastProgressPoint = progress;
-	*g_flLastUpdateTime = Plat_FloatTime();
+	g_flLastUpdateTime = Plat_FloatTime();
 
 	if (loadingText && desc->pszDesc)
 		vgui_Label_SetText(loadingText, desc->pszDesc);

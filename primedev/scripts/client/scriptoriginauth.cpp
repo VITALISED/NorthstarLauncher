@@ -19,12 +19,6 @@ global struct MasterServerAuthResult
 }
 */
 
-ADD_SQFUNC("void", NSResetToken, "", "", ScriptContext::UI)
-{
-	g_pCVar->FindVar("serverfilter")->SetValue("");
-	return SQRESULT_NULL;
-}
-
 ADD_SQFUNC("bool", NSIsVanilla, "", "", ScriptContext::SERVER | ScriptContext::CLIENT | ScriptContext::UI)
 {
 	g_pSquirrel<context>->pushbool(sqvm, g_pVanillaCompatibility->GetVanillaCompatibility());
