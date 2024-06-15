@@ -101,88 +101,98 @@ void MasterServerManager::AuthenticateOriginWithMasterServer(const char* uid, co
 	m_bOriginAuthWithMasterServerSuccessful = false;
 	m_sOriginAuthWithMasterServerErrorCode = "";
 	m_sOriginAuthWithMasterServerErrorMessage = "";
+	m_iConnectionFailedRetries = 0;
 
-	std::thread requestThread(
-		[this, uidStr, tokenStr]()
-		{
-			spdlog::info("Trying to authenticate with northstar masterserver for user {}", uidStr);
+	std::function<void()> requestThreadFn = [&, this, uidStr, tokenStr]()
+	{
+		spdlog::info("Trying to authenticate with northstar masterserver for user {}", uidStr);
 
-			CURL* curl = curl_easy_init();
-			SetCommonHttpClientOptions(curl);
-			std::string readBuffer;
-			curl_easy_setopt(
-				curl,
-				CURLOPT_URL,
-				fmt::format("{}/client/origin_auth?id={}&token={}", Cvar_ns_masterserver_hostname->GetString(), uidStr, tokenStr).c_str());
-			curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "GET");
-			curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, CurlWriteToStringBufferCallback);
-			curl_easy_setopt(curl, CURLOPT_WRITEDATA, &readBuffer);
+		CURL* curl = curl_easy_init();
+		SetCommonHttpClientOptions(curl);
+		std::string readBuffer;
+		curl_easy_setopt(
+			curl,
+			CURLOPT_URL,
+			fmt::format("{}/client/origin_auth?id={}&token={}", Cvar_ns_masterserver_hostname->GetString(), uidStr, tokenStr).c_str());
+		curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "GET");
+		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, CurlWriteToStringBufferCallback);
+		curl_easy_setopt(curl, CURLOPT_WRITEDATA, &readBuffer);
 
-			CURLcode result = curl_easy_perform(curl);
-			ScopeGuard cleanup(
-				[&]
-				{
-					m_bOriginAuthWithMasterServerInProgress = false;
-					m_bOriginAuthWithMasterServerDone = true;
-					curl_easy_cleanup(curl);
-				});
-
-			if (result == CURLcode::CURLE_OK)
+		CURLcode result = curl_easy_perform(curl);
+		ScopeGuard cleanup(
+			[&]
 			{
-				m_bSuccessfullyConnected = true;
+				m_bOriginAuthWithMasterServerInProgress = false;
+				m_bOriginAuthWithMasterServerDone = true;
+				curl_easy_cleanup(curl);
+			});
 
-				rapidjson_document originAuthInfo;
-				originAuthInfo.Parse(readBuffer.c_str());
+		if (result == CURLcode::CURLE_OK)
+		{
+			m_bSuccessfullyConnected = true;
 
-				if (originAuthInfo.HasParseError())
-				{
-					spdlog::error(
-						"Failed reading origin auth info response: encountered parse error \"{}\"",
-						rapidjson::GetParseError_En(originAuthInfo.GetParseError()));
-					return;
-				}
+			rapidjson_document originAuthInfo;
+			originAuthInfo.Parse(readBuffer.c_str());
 
-				if (!originAuthInfo.IsObject() || !originAuthInfo.HasMember("success"))
-				{
-					spdlog::error("Failed reading origin auth info response: malformed response object {}", readBuffer);
-					return;
-				}
+			if (originAuthInfo.HasParseError())
+			{
+				spdlog::error(
+					"Failed reading origin auth info response: encountered parse error \"{}\"",
+					rapidjson::GetParseError_En(originAuthInfo.GetParseError()));
+				return;
+			}
 
-				if (originAuthInfo["success"].IsTrue() && originAuthInfo.HasMember("token") && originAuthInfo["token"].IsString())
-				{
-					strncpy_s(
-						m_sOwnClientAuthToken,
-						sizeof(m_sOwnClientAuthToken),
-						originAuthInfo["token"].GetString(),
-						sizeof(m_sOwnClientAuthToken) - 1);
-					spdlog::info("Northstar origin authentication completed successfully!");
-					m_bOriginAuthWithMasterServerSuccessful = true;
-				}
-				else
-				{
-					spdlog::error("Northstar origin authentication failed");
+			if (!originAuthInfo.IsObject() || !originAuthInfo.HasMember("success"))
+			{
+				spdlog::error("Failed reading origin auth info response: malformed response object {}", readBuffer);
+				return;
+			}
 
-					if (originAuthInfo.HasMember("error") && originAuthInfo["error"].IsObject())
-					{
-
-						if (originAuthInfo["error"].HasMember("enum") && originAuthInfo["error"]["enum"].IsString())
-						{
-							m_sOriginAuthWithMasterServerErrorCode = originAuthInfo["error"]["enum"].GetString();
-						}
-
-						if (originAuthInfo["error"].HasMember("msg") && originAuthInfo["error"]["msg"].IsString())
-						{
-							m_sOriginAuthWithMasterServerErrorMessage = originAuthInfo["error"]["msg"].GetString();
-						}
-					}
-				}
+			if (originAuthInfo["success"].IsTrue() && originAuthInfo.HasMember("token") && originAuthInfo["token"].IsString())
+			{
+				strncpy_s(
+					m_sOwnClientAuthToken,
+					sizeof(m_sOwnClientAuthToken),
+					originAuthInfo["token"].GetString(),
+					sizeof(m_sOwnClientAuthToken) - 1);
+				spdlog::info("Northstar origin authentication completed successfully!");
+				m_bOriginAuthWithMasterServerSuccessful = true;
 			}
 			else
 			{
-				spdlog::error("Failed performing northstar origin auth: error {}", curl_easy_strerror(result));
-				m_bSuccessfullyConnected = false;
+				if (m_iConnectionFailedRetries < 5)
+				{
+					m_iConnectionFailedRetries++;
+					spdlog::warn("Auth failed, retrying: attempt {}", m_iConnectionFailedRetries);
+					requestThreadFn();
+					return;
+				}
+
+				spdlog::error("Northstar origin authentication failed");
+
+				if (originAuthInfo.HasMember("error") && originAuthInfo["error"].IsObject())
+				{
+
+					if (originAuthInfo["error"].HasMember("enum") && originAuthInfo["error"]["enum"].IsString())
+					{
+						m_sOriginAuthWithMasterServerErrorCode = originAuthInfo["error"]["enum"].GetString();
+					}
+
+					if (originAuthInfo["error"].HasMember("msg") && originAuthInfo["error"]["msg"].IsString())
+					{
+						m_sOriginAuthWithMasterServerErrorMessage = originAuthInfo["error"]["msg"].GetString();
+					}
+				}
 			}
-		});
+		}
+		else
+		{
+			spdlog::error("Failed performing northstar origin auth: error {}", curl_easy_strerror(result));
+			m_bSuccessfullyConnected = false;
+		}
+	};
+
+	std::thread requestThread(requestThreadFn);
 
 	requestThread.detach();
 }

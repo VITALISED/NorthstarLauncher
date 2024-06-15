@@ -2,11 +2,11 @@
 
 #include "core/convar/convar.h"
 #include "server/serverpresence.h"
-#include <winsock2.h>
-#include <string>
 #include <cstring>
 #include <future>
+#include <string>
 #include <unordered_set>
+#include <winsock2.h>
 
 extern ConVar* Cvar_ns_masterserver_hostname;
 extern ConVar* Cvar_ns_curl_log_enable;
@@ -122,6 +122,7 @@ public:
 	std::string m_sCurrentServerPassword;
 
 	std::unordered_set<std::string> m_handledServerConnections;
+	int m_iConnectionFailedRetries;
 
 public:
 	MasterServerManager();
