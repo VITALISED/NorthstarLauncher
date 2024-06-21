@@ -1,9 +1,13 @@
 #pragma once
 
-#include "squirrelclasstypes.h"
+// clang-format off
+
 #include "squirrelautobind.h"
+#include "squirrelclasstypes.h"
 #include "core/math/vector.h"
 #include "mods/modmanager.h"
+
+// clang-format on
 
 /*
 	definitions from hell
@@ -176,7 +180,12 @@ public:
 
 	inline void pushstring(HSquirrelVM* sqvm, const SQChar* sVal, int length = -1)
 	{
-		__sq_pushstring(sqvm, sVal, length);
+		// prevent the abundant c_str calls from dying before the sq api can strlen the sqchar
+		assert(sVal != NULL);
+		const SQChar* _cpy = new SQChar[strlen(sVal) + 1];
+		strcpy(const_cast<SQChar*>(_cpy), sVal);
+		__sq_pushstring(sqvm, _cpy, length);
+		delete _cpy;
 	}
 
 	inline void pushinteger(HSquirrelVM* sqvm, const SQInteger iVal)
