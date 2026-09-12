@@ -1,5 +1,5 @@
 #pragma once
 
-#include "game/client/icliententitylist.h"
+#include "client/icliententitylist.h"
 
 extern IClientEntityList* g_pClientEntityList;

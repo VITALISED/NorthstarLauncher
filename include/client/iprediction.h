@@ -1,6 +1,6 @@
 #pragma once
 
-#include "game/client/icliententitylist.h"
+#include "client/icliententitylist.h"
 
 #include <cstdint>
 

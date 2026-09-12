@@ -33,3 +33,4 @@ bool IsVPKMounted(const char* vpkPath);
 
 // Removes every loose mod directory added through SetNewModSearchPaths.
 bool RemoveModSearchPaths();
+

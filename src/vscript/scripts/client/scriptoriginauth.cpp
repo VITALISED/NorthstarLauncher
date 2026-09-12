@@ -8,7 +8,7 @@
 
 ADD_SQFUNC("bool", NSIsMasterServerAuthenticated, "", "", ScriptContext::UI)
 {
-	g_pSquirrel[context]->pushbool(sqvm, g_pMasterServerManager->m_bOriginAuthWithMasterServerDone);
+	g_pSquirrel[context]->pushbool(sqvm, g_pMasterServerManager->m_bOriginAuthWithMasterServerDone.load(std::memory_order_acquire));
 	return SQRESULT_NOTNULL;
 }
 
@@ -25,8 +25,8 @@ global struct MasterServerAuthResult
 
 ADD_SQFUNC("void", NSRequestMasterServerAuth, "", "", ScriptContext::UI)
 {
-	if (g_pMasterServerManager->m_bOriginAuthWithMasterServerDone ||
-		g_pMasterServerManager->m_bOriginAuthWithMasterServerInProgress)
+	if (g_pMasterServerManager->m_bOriginAuthWithMasterServerDone.load(std::memory_order_acquire) ||
+		g_pMasterServerManager->m_bOriginAuthWithMasterServerInProgress.load(std::memory_order_acquire))
 		return SQRESULT_NULL;
 
 	if (g_pCVar->FindVar("ns_has_agreed_to_send_token")->GetInt() == AGREED_TO_SEND_TOKEN)
@@ -45,7 +45,7 @@ ADD_SQFUNC("MasterServerAuthResult", NSGetMasterServerAuthResult, "", "", Script
 {
 	g_pSquirrel[context]->pushnewstructinstance(sqvm, 3);
 
-	g_pSquirrel[context]->pushbool(sqvm, g_pMasterServerManager->m_bOriginAuthWithMasterServerSuccessful);
+	g_pSquirrel[context]->pushbool(sqvm, g_pMasterServerManager->m_bOriginAuthWithMasterServerSuccessful.load(std::memory_order_acquire));
 	g_pSquirrel[context]->sealstructslot(sqvm, 0);
 
 	g_pSquirrel[context]->pushstring(sqvm, g_pMasterServerManager->m_sOriginAuthWithMasterServerErrorCode.c_str(), -1);

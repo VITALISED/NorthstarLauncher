@@ -49,7 +49,7 @@ public:
 	// it resident and block targeted model/material teardown until restart.
 	bool HasUnsafeLoadedPaks() const;
 
-	void OnPakLoaded(std::string& originalPath, std::string& resultingPath, PakHandle_t resultingHandle);
+	void OnPakLoaded(const std::string& resultingPath, PakHandle_t resultingHandle);
 	void OnPakLoadFailed(const PakLoadedInfo_s& info);
 	bool PreparePakUnload(PakHandle_t handle);
 	void CommitPakUnload(PakHandle_t handle);
@@ -72,19 +72,16 @@ private:
 	bool IsSafeFailedPak(PakHandle_t handle) const;
 	void ForgetSafeFailedPak(PakHandle_t handle);
 	bool HasActivePakTransactionsLocked(const PakGlobalState_s& pakGlobals) const;
-	void LoadDependentPaks(std::string& path, PakHandle_t handle);
+	void LoadDependentPaks(const std::string& path, PakHandle_t handle);
 	void UnloadDependentPaks(PakHandle_t handle);
 
-	// All paks that vanilla has attempted to load. (they may have been aliased away)
-	// Also known as a list of rpaks that the vanilla game would have loaded at this point in time.
 	std::vector<std::pair<std::string, PakHandle_t>> m_vanillaPaks;
 
 	// All mod Paks that are currently tracked
 	std::vector<ModPak_t> m_modPaks;
 	// Hashes of the currently loaded map mod paks
 	std::vector<size_t> m_mapPaks;
-	// Currently loaded Pak path hashes that depend on a handle to remain loaded (Postload)
-	std::vector<std::pair<PakHandle_t, size_t>> m_dependentPaks;
+	std::vector<std::pair<PakHandle_t, PakHandle_t>> m_dependentPaks;
 
 	// Used to force rpaks to be unloaded and reloaded on the next map load.
 	// Vanilla behaviour is to not do this when loading into mp_lobby, or loading into the same map you were last in.

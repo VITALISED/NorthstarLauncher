@@ -127,8 +127,6 @@ enum class GameMode_t : int
 class CGlobalVars
 {
 public:
-	// Source's global timing prefix, with Titanfall's expanded current-time
-	// state. Retail engine stores the first two floats together as one qword.
 	double m_flRealTime;                    // 0x00
 	int m_nFrameCount;                      // 0x08
 	float m_flAbsoluteFrameTime;            // 0x0C
@@ -145,10 +143,6 @@ public:
 	GameMode_t m_nGameMode;                 // 0x38
 	std::uint32_t m_nTickCount;             // 0x3C
 	float m_flTickInterval;                 // 0x40
-
-	// The retail game DLL owns the semantics of this bounded extension. Engine
-	// references prove its extent and the following map fields, but do not
-	// distinguish the individual 0x44-0x5F members well enough to name them.
 	std::byte m_Reserved0044[0x1C];          // 0x44
 	const char* m_pMapName;                  // 0x60
 	int m_nMapVersion;                       // 0x68

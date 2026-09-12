@@ -1,17 +1,18 @@
 #include "connect.h"
-#include "engine/client/clientstate.h"
-#include "dedicated/dedicated.h"
 #include "common/proto_oob.h"
+#include "core/convar/concommand.h"
 #include "core/tier0.h"
-#include "tier0/vanilla.h"
-#include "tier0/frametask.h"
+#include "dedicated/dedicated.h"
+#include "engine/cdll_int.h"
+#include "engine/client/clientstate.h"
 #include "engine/r2engine.h"
 #include "masterserver/masterserver.h"
 #include "modsystem/modmanager.h"
 #include "server/auth/serverauthentication.h"
-#include "vscript/languages/squirrel_re/squirrel.h"
-#include "core/convar/concommand.h"
+#include "tier0/frametask.h"
+#include "tier0/vanilla.h"
 #include "tier1/cvar.h"
+#include "vscript/languages/squirrel_re/squirrel.h"
 
 DECLARE_MODULE(ConnectHooks)
 
@@ -28,6 +29,42 @@ ConVar* Cvar_cl_resend_inforequest_timeout_remote = nullptr;
 ConVar* Cvar_cl_resend_inforequest_interval_ms = nullptr;
 ConVar* Cvar_cl_unload_remote_mods_on_matchmaking = nullptr;
 
+void ConnectionManager::SetPendingMap(std::string mapName)
+{
+	std::scoped_lock lock(m_MapLoadMutex);
+	m_szMapName = std::move(mapName);
+	m_bMapLoadAuthorized = false;
+}
+
+void ConnectionManager::ClearPendingMap()
+{
+	std::scoped_lock lock(m_MapLoadMutex);
+	m_szMapName.clear();
+	m_bMapLoadAuthorized = false;
+}
+
+// i don't like this honestly
+bool ConnectionManager::DeferMapLoad(std::string_view mapName)
+{
+	if (!IsConnecting())
+		return false;
+
+	std::scoped_lock lock(m_MapLoadMutex);
+	if (!IsConnecting())
+		return false;
+
+	if (m_bMapLoadAuthorized && mapName == m_szMapName)
+	{
+		m_bMapLoadAuthorized = false;
+		return false;
+	}
+
+	if (!m_bMapLoadAuthorized)
+		m_szMapName = mapName;
+
+	return true;
+}
+
 void ConnectionManager::Connect(bool useSCRPlaque, std::string mapName)
 {
 	const char* mp_gamemode = g_pCVar->FindVar("mp_gamemode") ? g_pCVar->FindVar("mp_gamemode")->GetString() : "";
@@ -37,16 +74,16 @@ void ConnectionManager::Connect(bool useSCRPlaque, std::string mapName)
 	if (useSCRPlaque && !isSolo)
 		SCR_BeginLoadingPlaque(nullptr);
 
-	if (m_bConnecting)
+	if (IsConnecting())
 		return;
 
 	ResetState();
 
-	m_szMapName = mapName;
+	SetPendingMap(std::move(mapName));
 	m_bUseSCRPlaque = useSCRPlaque;
-	m_bConnecting = true;
 	m_eLastMode = m_eCurrentMode;
 	m_eCurrentMode = eConnectionMode::LocalServer;
+	m_bConnecting.store(true, std::memory_order_release);
 
 	InvokeConnectionStartCallbacks();
 
@@ -62,16 +99,16 @@ void ConnectionManager::Connect(const std::string& address, const std::string& p
 	if (useSCRPlaque && !isSolo)
 		SCR_BeginLoadingPlaque(nullptr);
 
-	if (m_bConnecting)
+	if (IsConnecting())
 		return;
 
 	ResetState();
 
-	m_szMapName = mapName;
+	SetPendingMap(std::move(mapName));
 	m_bUseSCRPlaque = useSCRPlaque;
-	m_bConnecting = true;
 	m_eLastMode = m_eCurrentMode;
 	m_eCurrentMode = eConnectionMode::RemoteServer;
+	m_bConnecting.store(true, std::memory_order_release);
 	m_szLastServerID = address;
 	m_szLastServerPassword = password;
 
@@ -89,16 +126,16 @@ void ConnectionManager::Connect(const std::string& address, ConnectionManager::e
 	if (useSCRPlaque && !isSolo)
 		SCR_BeginLoadingPlaque(nullptr);
 
-	if (m_bConnecting)
+	if (IsConnecting())
 		return;
 
 	ResetState();
 
-	m_szMapName = mapName;
+	SetPendingMap(std::move(mapName));
 	m_bUseSCRPlaque = useSCRPlaque;
-	m_bConnecting = true;
 	m_eLastMode = m_eCurrentMode;
 	m_eCurrentMode = mode;
+	m_bConnecting.store(true, std::memory_order_release);
 
 	InvokeConnectionStartCallbacks();
 
@@ -248,31 +285,54 @@ ConnectionManager::eConnectionMode ConnectionManager::DetermineModeFromAddress(c
 
 void ConnectionManager::AuthenticateToMasterServer()
 {
-	if (g_pMasterServerManager->m_bOriginAuthWithMasterServerDone || g_pMasterServerManager->m_bOriginAuthWithMasterServerInProgress)
-		return;
+	auto authDone = []()
+	{
+		return g_pMasterServerManager->m_bOriginAuthWithMasterServerDone.load(std::memory_order_acquire);
+	};
 
-	int agreedToSendToken = g_pCVar->FindVar("ns_has_agreed_to_send_token")->GetInt();
-	if (agreedToSendToken != AGREED_TO_SEND_TOKEN)
-		return;
+	if (!authDone())
+	{
+		int agreedToSendToken = g_pCVar->FindVar("ns_has_agreed_to_send_token")->GetInt();
+		if (agreedToSendToken != AGREED_TO_SEND_TOKEN)
+		{
+			Interrupt("#AUTHENTICATION_FAILED_BODY");
+			return;
+		}
 
-	UpdateMessage("#DIALOG_AUTHENTICATING_MASTERSERVER");
+		UpdateMessage("#DIALOG_AUTHENTICATING_MASTERSERVER");
 
-	float startTime = g_PlatFloatTime();
-	float timeOut = g_pCVar->FindVar("cl_resend_timeout")->GetFloat();
+		// if you run +map you can start-up before authing really annoying
+        if (!g_pEngineClient->IsOriginAuthenticated())
+        {
+            spdlog::info("Waiting for Origin authentication before connecting");
+            while (!IsCancelled() && !g_pEngineClient->IsOriginAuthenticated())
+                Sleep(100);
 
-	g_pMasterServerManager->AuthenticateOriginWithMasterServer();
+            RETURN_IF_CANCELLED()
+        }
 
-	while (!g_pMasterServerManager->m_bOriginAuthWithMasterServerDone && g_PlatFloatTime() - startTime < timeOut && !IsCancelled())
-		Sleep(100);
+        RETURN_IF_CANCELLED()
+
+        float startTime = g_PlatFloatTime();
+		float timeOut = g_pCVar->FindVar("cl_resend_timeout")->GetFloat();
+
+		g_pMasterServerManager->AuthenticateOriginWithMasterServer();
+
+		while (!authDone() && g_PlatFloatTime() - startTime < timeOut && !IsCancelled())
+			Sleep(100);
+	}
 
 	RETURN_IF_CANCELLED()
 
 	UpdateMessage();
 
-	if (!g_pMasterServerManager->m_bOriginAuthWithMasterServerDone)
+	if (!authDone() || !g_pMasterServerManager->m_bOriginAuthWithMasterServerSuccessful.load(std::memory_order_acquire))
+	{
 		Interrupt("#AUTHENTICATION_FAILED_BODY");
-	else
-		spdlog::info("Successfully authenticated with master server for origin auth");
+		return;
+	}
+
+	spdlog::info("Successfully authenticated with master server for origin auth");
 }
 
 void ConnectionManager::SendInfoRequestPacket(const CNetAdr& addr, bool serverAuthUs, bool requestMods)
@@ -773,12 +833,16 @@ void ConnectionManager::FinaliseJoiningLocalServer()
 	}
 	else
 	{
-		std::string command;
+		std::string mapName;
+		{
+			std::scoped_lock lock(m_MapLoadMutex);
+			if (m_szMapName.empty())
+				m_szMapName = "mp_lobby";
+			mapName = m_szMapName;
+			m_bMapLoadAuthorized = true;
+		}
 
-		if (!m_szMapName.empty())
-			Cbuf_AddText(Cbuf_GetCurrentPlayer(), fmt::format("map {}", m_szMapName).c_str(), cmd_source_t::kCommandSrcCode);
-		else
-			Cbuf_AddText(Cbuf_GetCurrentPlayer(), "map mp_lobby", cmd_source_t::kCommandSrcCode);
+		Cbuf_AddText(Cbuf_GetCurrentPlayer(), fmt::format("map {}", mapName).c_str(), cmd_source_t::kCommandSrcCode);
 	}
 }
 

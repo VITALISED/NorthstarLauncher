@@ -2,7 +2,7 @@
 #include "engine/hoststate.h"
 #include "engine/r2engine.h"
 #include "tier1/bitvec.h"
-#include "game/server/ai_network.h"
+#include "server/ai_network.h"
 #include "tier1/utlvector.h"
 #include <cstddef>
 #include <filesystem>

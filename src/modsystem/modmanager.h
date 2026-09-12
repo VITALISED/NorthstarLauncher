@@ -56,6 +56,10 @@ private:
 	std::unordered_set<std::string> m_ModLooseModelFiles;
 	std::unordered_map<std::string, std::string> m_ModVpkModelSources;
 	std::unordered_set<std::string> m_StaleModModelFiles;
+	std::unordered_set<std::string> m_RegisteredVPKs;
+	std::unordered_map<std::string, std::string> m_MapVpkFileSources;
+	std::unordered_set<std::string> m_MapVpkCacheBypassFiles;
+	std::unordered_set<std::string> m_StaleMapVpkModelFiles;
 	mutable std::mutex m_ModelReloadMutex;
 	bool m_bModelReloadPending = false;
 	CModelLoader* m_pModelLoader = nullptr;
@@ -68,6 +72,7 @@ private:
     std::string NormaliseModelLookupPath(const fs::path& path) const;
 	std::vector<std::string> GetModelReloadPaths() const;
 	void MarkModelsReloaded(const std::unordered_set<std::string>& failedPaths);
+	std::unordered_set<std::string> FlushModelPaths(std::span<const std::string> paths);
 
 	// precalculated hashes
 	size_t m_hScriptsRsonHash;
@@ -153,6 +158,13 @@ public:
 	void ReloadModsWithEnabledStates(std::unordered_map<std::string, bool> enabledStates);
 	bool HasLoadedPackageMods(const fs::path& packageRoot, std::span<const std::string> expectedModNames) const;
 	void RegisterMountedVPKModels(const ModVPKEntry& vpkEntry);
+	void UnregisterMountedVPKModels(const char* vpkPath);
+	bool IsMapVPKCacheFile(const fs::path& path) const;
+	bool GetMapVPKFileSource(const fs::path& path, std::string& vpkPath) const;
+	// Only called after old-world unreference/material cleanup, before new map assets bind.
+	bool PrepareMapVPKs(const char* mapName);
+	bool MountMapVPKs(const char* mapName);
+	bool NeedsMapVPKTransition(const char* mapName, bool forceReload) const;
 	bool IsModModelFile(const fs::path& path) const;
 	bool GetModVPKModelSource(const fs::path& path, std::string& vpkPath) const;
 	std::string NormaliseModFilePath(const fs::path path) const;
@@ -173,6 +185,7 @@ fs::path GetModFolderPath();
 fs::path GetRemoteModFolderPath();
 fs::path GetPackageFolderPath();
 fs::path GetCompiledAssetsPath();
+fs::path GetGeneratedAssetsPath();
 fs::path GetModIconPath();
 
 extern ModManager* g_pModManager;

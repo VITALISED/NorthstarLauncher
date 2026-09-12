@@ -52,6 +52,8 @@ struct ModVPKEntry
 public:
 	bool m_bAutoLoad;
 	std::string m_sVpkPath;
+	std::string m_MapName;
+	std::vector<std::string> m_FilePaths;
 	std::vector<std::string> m_ModelPaths;
 };
 

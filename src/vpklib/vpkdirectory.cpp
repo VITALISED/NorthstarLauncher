@@ -138,8 +138,11 @@ static std::string VPKDirectory_FormatEntryPath(
 	}
 
 	entry.append(fileName);
-	entry.push_back('.');
-	entry.append(extension);
+	if (extension != " ")
+	{
+		entry.push_back('.');
+		entry.append(extension);
+	}
 	return entry;
 }
 
@@ -159,7 +162,7 @@ static bool VPKDirectory_ReadTree(
 		if (extension.empty())
 			break;
 
-		const bool includeExtension = VPKDirectory_ExtensionMatches(extension, requestedExtension);
+		const bool includeExtension = requestedExtension.empty() || VPKDirectory_ExtensionMatches(extension, requestedExtension);
 		while (true)
 		{
 			if (!cursor.ReadString(directory))

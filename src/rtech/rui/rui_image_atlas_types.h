@@ -5,6 +5,7 @@
 
 struct RuiDrawBatch;
 
+
 struct RuiImageAtlasEntry
 {
 	float pixelBounds[4];

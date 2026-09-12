@@ -22,6 +22,7 @@ add_library(
     "client/clientruihooks.cpp"
     "client/cliententitylist.h"
     "client/cliententitylist.cpp"
+    "client/clientmode_shared.cpp"
     "client/clientvideooverrides.cpp"
     "client/connect.cpp"
     "client/connect.h"
@@ -99,7 +100,6 @@ add_library(
     "engine/r2engine.h"
     "engine/usermessages.cpp"
     "engine/usermessages.h"
-    "game/client/clientmode_shared.cpp"
     "logging/crashhandler.cpp"
     "logging/crashhandler.h"
     "logging/logging.cpp"
@@ -195,7 +195,6 @@ add_library(
     "server/ai_navmesh.h"
     "server/buildainfile.cpp"
     "server/player.cpp"
-    "server/player.h"
     "server/playerSettingsServer.cpp"
     "server/r2server.cpp"
     "server/r2server.h"
@@ -341,7 +340,8 @@ target_include_directories(
 
 target_link_libraries(
     NorthstarDLL
-    PRIVATE minhook
+    PRIVATE NorthstarIncludes
+            minhook
             minizip
             libzstd_static
             # VTFLib::VTFLib
@@ -365,7 +365,6 @@ target_link_libraries(
             spdlog
             libcurl
             webp
-            NorthstarIncludes
             httplib::httplib
     )
 

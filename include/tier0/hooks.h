@@ -878,6 +878,7 @@ template <typename HookT> struct LambdaHookRegistrationProc
             using OriginalFn = ReturnT(callingConvention*)(Args...);                                                                                 \
             static ReturnT callingConvention Detour(Args... args)                                                                                    \
             {                                                                                                                                        \
+                Self::s_returnAddress = _ReturnAddress();                                                                                            \
                 if constexpr (std::is_void_v<ReturnT>)                                                                                               \
                     Self::Instance().Invoke(args...);                                                                                                \
                 else                                                                                                                                 \

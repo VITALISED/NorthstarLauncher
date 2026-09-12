@@ -1,6 +1,8 @@
 #include "cdll_int.h"
 #include "common/netmessages.h"
 #include "core/tier0.h"
+#include "core/tier1.h"
+#include "engine/cdll_int.h"
 #include "engine/client/clientstate.h"
 #include "engine/demo.h"
 #include "engine/r2engine.h"
@@ -49,6 +51,7 @@ void* s_pCLCClientTickVTable;
 float s_lastMovementCall;
 float s_lastFrameTime;
 
+IVEngineClient* g_pEngineClient;
 char* g_pLocalPlayerUserID;
 char* g_pLocalPlayerOriginToken;
 GetBaseLocalClientType GetBaseLocalClient;
@@ -204,7 +207,8 @@ ON_DLL_LOAD("client.dll", R2Client, [](CModule module)
 
 ON_DLL_LOAD_CLIENT_RELIESON("engine.dll", R2EngineClient, ConCommand, [](CModule module)
 {
-	g_pLocalPlayerUserID = module.Offset(0x13F8E688).RCast<char*>();
+    g_pEngineClient = Sys_GetFactoryPtr("engine.dll", VENGINE_CLIENT_INTERFACE_VERSION).RCast<IVEngineClient*>();
+    g_pLocalPlayerUserID = module.Offset(0x13F8E688).RCast<char*>();
 	g_pLocalPlayerOriginToken = module.Offset(0x13979C80).RCast<char*>();
 	GetBaseLocalClient = module.Offset(0x78200).RCast<GetBaseLocalClientType>();
 	CClientState__SendStringCmd = module.Offset(0x91A10).RCast<CClientState__SendStringCmd_t>();

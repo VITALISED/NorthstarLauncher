@@ -234,20 +234,25 @@ DECLARE_HOOK(Host_Map_f, engine.dll + 0x15B340, [](auto& hook, const CCommand& a
 	}
 
 
-	if (state == server_state_t::ss_dead && !g_pConnectionManager->IsConnecting() && !IsDedicatedServer())
+	if (state == server_state_t::ss_dead)
 	{
+		if (g_pConnectionManager->DeferMapLoad(args.Arg(1)))
+			return;
 
-		bool scrPlaque = true;
+		if (!g_pConnectionManager->IsConnecting())
+		{
+			bool scrPlaque = true;
 
-		if (g_pConnectionManager->IsFailed())
-			g_pConnectionManager->ResetState();
+			if (g_pConnectionManager->IsFailed())
+				g_pConnectionManager->ResetState();
 
-		if (args.ArgC() == 3)
-			atoi(args.Arg(2)) == 1 ? scrPlaque = true : scrPlaque = false;
+			if (args.ArgC() == 3)
+				atoi(args.Arg(2)) == 1 ? scrPlaque = true : scrPlaque = false;
 
-		std::string map = args.Arg(1);
-		g_pConnectionManager->Connect(scrPlaque, map);
-		return;
+			std::string map = args.Arg(1);
+			g_pConnectionManager->Connect(scrPlaque, map);
+			return;
+		}
 	}
 
 	if (state >= server_state_t::ss_active)

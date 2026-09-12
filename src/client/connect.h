@@ -6,6 +6,9 @@
 #include "engine/r2engine.h"
 #include "modsystem/moddownloader.h"
 #include "engine/localize.h"
+#include <atomic>
+#include <mutex>
+#include <string_view>
 
 extern bool g_bConnectingToServer;
 extern bool g_bRetryingConnection;
@@ -60,9 +63,11 @@ private:
 	bool m_bFinished = false;
 	bool m_bFailed = false;
 	bool m_bUseSCRPlaque = false; // whether we're expecting script to show progress or use LoadingProgress from BaseModUI
-	bool m_bConnecting = false;
+	std::atomic_bool m_bConnecting = false;
 	float m_flConnectionStartTime = 0.0f;
 	bool m_bAuthSucessful = false;
+	std::mutex m_MapLoadMutex;
+	bool m_bMapLoadAuthorized = false;
 	std::string m_szMapName;
 	std::string m_szLastServerID;
 	std::string m_szLastServerPassword;
@@ -78,7 +83,9 @@ private:
 	void ConnectToP2PServer(const std::string& address);
 	void ConnectToDirectServer(const std::string& address);
 	void SendInfoRequestPacket(const CNetAdr& addr, bool serverAuthUs, bool requestMods);
-	bool IsCancelled() { return !m_bConnecting; }
+	void SetPendingMap(std::string mapName);
+	void ClearPendingMap();
+	bool IsCancelled() { return !m_bConnecting.load(std::memory_order_acquire); }
 
 	void InvokeConnectionStartCallbacks();
 	void InvokeConnectionStoppedCallbacks(std::string reason = "");
@@ -97,6 +104,7 @@ public:
 	void Connect(const std::string& address, eConnectionMode mode, bool useSCRPlaque = true, std::string mapName = "");
 	void Connect(bool useSCRPlaque = true, std::string mapName = "");
 	void Connect(const std::string& address, const std::string& password, bool useSCRPlaque, std::string mapName = "");
+	bool DeferMapLoad(std::string_view mapName);
 
     template <typename... Args>
     void Interrupt(const std::string& reason = "", Args... args)
@@ -104,7 +112,7 @@ public:
         m_bFailed = true;
         m_szFailReason = reason;
 
-        m_bConnecting = false;
+        m_bConnecting.store(false, std::memory_order_release);
         m_flConnectionStartTime = 0.0f;
         m_bAuthSucessful = false;
         m_bRetrying = false;
@@ -113,6 +121,7 @@ public:
         m_bUnloadingRemoteModsOnMatchmaking = false;
         m_eCurrentMode = m_eLastMode;
 		m_bSolo = false;
+		ClearPendingMap();
 
         g_pModDownloader->CancelDownload();
 
@@ -128,13 +137,13 @@ public:
         }
     }
 	void Retrying(bool retrying) { m_bRetrying = retrying; }
-	void Finalise() { m_bConnecting = false; InvokeConnectionStoppedCallbacks(); }
+	void Finalise() { m_bConnecting.store(false, std::memory_order_release); InvokeConnectionStoppedCallbacks(); }
 	void ResetState()
 	{
 		m_bFailed = false;
 		m_szFailReason.clear();
 		m_szProgressMessage.clear();
-		m_bConnecting = false;
+		m_bConnecting.store(false, std::memory_order_release);
 		m_flConnectionStartTime = 0.0f;
 		m_bAuthSucessful = false;
 		m_bRetrying = false;
@@ -142,6 +151,7 @@ public:
 		m_eModAcceptState = eModAcceptState::NOT_DECIDED;
 		m_bUnloadingRemoteModsOnMatchmaking = false;
 		m_bSolo = false;
+		ClearPendingMap();
 	}
 
 	bool ParseAddress(const std::string& address, std::string& ip, int& port, bool& isV6);
@@ -149,7 +159,7 @@ public:
 	void SetProgressMessage(const std::string& message) { m_szProgressMessage = message; }
 	std::string& GetProgressMessage() { return m_szProgressMessage; }
 	bool IsFailed() { return m_bFailed; }
-	bool IsConnecting() { return m_bConnecting; }
+	bool IsConnecting() { return m_bConnecting.load(std::memory_order_acquire); }
 	eConnectionMode GetCurrentMode() { return m_eCurrentMode; }
 	void SetMatchmaking() { m_eLastMode = m_eCurrentMode; m_eCurrentMode = eConnectionMode::Matchmaking; }
 	eConnectionMode DetermineModeFromAddress(const std::string& address);

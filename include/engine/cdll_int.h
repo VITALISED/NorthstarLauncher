@@ -558,3 +558,5 @@ static_assert(offsetof(MatchmakingDatacenter_t, m_ServiceName) == 0x40);
 static_assert(offsetof(MatchmakingDatacenter_t, m_NetworkAddress) == 0x80);
 static_assert(offsetof(MatchmakingDatacenter_t, m_PingMilliseconds) == 0x98);
 static_assert(sizeof(IVEngineClient) == sizeof(void*));
+
+extern IVEngineClient* g_pEngineClient;

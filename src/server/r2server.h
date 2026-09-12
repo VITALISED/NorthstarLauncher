@@ -3,7 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 
-#include "player.h"
+#include "server/player.h"
 #include "inetchannel.h"
 #include "engine/client/client.h"
 #include "tier1/utlmemory.h"

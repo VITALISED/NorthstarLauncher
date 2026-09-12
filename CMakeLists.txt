@@ -260,7 +260,6 @@ CPMAddPackage(
 )
 
 # cmake-format: on
-
 add_subdirectory(src)
 add_subdirectory(proxy)
 add_subdirectory(dedicated)

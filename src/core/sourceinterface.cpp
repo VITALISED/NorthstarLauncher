@@ -1,4 +1,4 @@
-#include "game/client/IGameClientExports.h"
+#include "client/IGameClientExports.h"
 
 #include "logging/sourceconsole.h"
 

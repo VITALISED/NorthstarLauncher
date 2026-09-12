@@ -1,6 +1,6 @@
 #pragma once
 
-#include "game/server/ai_node.h"
+#include "server/ai_node.h"
 #include "engine/IEngineTrace.h"
 
 #include <cstddef>

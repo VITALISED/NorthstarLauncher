@@ -170,6 +170,7 @@ DECLARE_HOOK_CC(EngineSpewFunc, engine.dll + 0x11CA80, __fastcall, [](auto& hook
 			case '+':
 			case ' ':
 			case '#':
+			case '.':
 			case '*':
 			case '0':
 			case '1':

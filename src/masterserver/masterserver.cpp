@@ -14,6 +14,7 @@
 #include "util/version.h"
 
 #include "client/origin.h"
+#include "engine/cdll_int.h"
 #include "engine/client/clientstate.h"
 #include "rapidjson/document.h"
 #include "rapidjson/error/en.h"
@@ -87,16 +88,27 @@ size_t CurlWriteToStringBufferCallback(char* contents, size_t size, size_t nmemb
 
 void MasterServerManager::AuthenticateOriginWithMasterServer()
 {
-    if (m_bOriginAuthWithMasterServerInProgress)
+    if (m_bOriginAuthWithMasterServerDone.load(std::memory_order_acquire))
         return;
 
-    m_bOriginAuthWithMasterServerInProgress = true;
-    m_bOriginAuthWithMasterServerSuccessful = false;
+    bool expected = false;
+    if (!m_bOriginAuthWithMasterServerInProgress.compare_exchange_strong(
+            expected, true, std::memory_order_acq_rel, std::memory_order_acquire))
+        return;
+
+    m_bOriginAuthWithMasterServerSuccessful.store(false, std::memory_order_release);
     m_sOriginAuthWithMasterServerErrorCode = "";
     m_sOriginAuthWithMasterServerErrorMessage = "";
 
     std::thread requestThread([this]()
     {
+        if (!g_pEngineClient->IsOriginAuthenticated())
+        {
+            spdlog::info("Waiting for Origin authentication before requesting master server authentication");
+            while (!g_pEngineClient->IsOriginAuthenticated())
+                std::this_thread::sleep_for(100ms);
+        }
+
         constexpr int maxAttempts = 5;
         int attempt = 0;
 
@@ -168,7 +180,7 @@ void MasterServerManager::AuthenticateOriginWithMasterServer()
                     strncpy_s(m_sOwnClientAuthToken, sizeof(m_sOwnClientAuthToken), originAuthInfo["token"].GetString(),
                               sizeof(m_sOwnClientAuthToken) - 1);
                     spdlog::info("Northstar origin authentication completed successfully!");
-                    m_bOriginAuthWithMasterServerSuccessful = true;
+                    m_bOriginAuthWithMasterServerSuccessful.store(true, std::memory_order_release);
                     break;
                 }
                 else
@@ -209,8 +221,8 @@ void MasterServerManager::AuthenticateOriginWithMasterServer()
             }
         }
 
-        m_bOriginAuthWithMasterServerInProgress = false;
-        m_bOriginAuthWithMasterServerDone = true;
+        m_bOriginAuthWithMasterServerDone.store(true, std::memory_order_release);
+        m_bOriginAuthWithMasterServerInProgress.store(false, std::memory_order_release);
     });
 
     requestThread.detach();

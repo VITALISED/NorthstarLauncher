@@ -1,13 +1,12 @@
 #include "modmanager.h"
 #include "config/profile.h"
 #include "core/convar/concommand.h"
-#include "tier1/convar.h"
-#include "tier1/cvar.h"
 #include "core/filesystem/filesystem.h"
 #include "datacache/mdlcache.h"
 #include "dedicated/dedicated.h"
-#include "engine/r2engine.h"
+#include "engine/gl_model_private.h"
 #include "engine/modelloader.h"
+#include "engine/r2engine.h"
 #include "masterserver/masterserver.h"
 #include "miles/audio.h"
 #include "modsystem/modinstaller.h"
@@ -18,6 +17,8 @@
 #include "rtech/pakstate.h"
 #include "tier0/frametask.h"
 #include "tier0/module.h"
+#include "tier1/convar.h"
+#include "tier1/cvar.h"
 #include "util/utils.h"
 #include "vpklib/vpkdirectory.h"
 
@@ -36,6 +37,10 @@
 #include <vector>
 
 ModManager* g_pModManager;
+
+int (*s_GetModelCount)(CModelLoader*) = nullptr;
+model_t* (*s_GetModelByIndex)(CModelLoader*, int) = nullptr;
+void (*s_UnloadModel)(CModelLoader*, model_t*) = nullptr;
 
 static fs::path NormalizeModPathForComparison(const fs::path& path)
 {
@@ -91,23 +96,23 @@ bool ModPaths::IsAtOrBelow(const fs::path& path, const fs::path& root)
 
 class CModDirectoryCollector final
 {
-public:
-  CModDirectoryCollector(std::vector<fs::path>& directories, const fs::path& legacyRoot) : m_Directories(directories), m_LegacyRoot(legacyRoot)
-  {
-  }
+  public:
+    CModDirectoryCollector(std::vector<fs::path>& directories, const fs::path& legacyRoot) : m_Directories(directories), m_LegacyRoot(legacyRoot)
+    {
+    }
 
-	void Add(const fs::path& directory)
-	{
+    void Add(const fs::path& directory)
+    {
         if (!m_WarnedAboutLegacyRoot && ModPaths::IsAtOrBelow(directory, m_LegacyRoot))
         {
-			spdlog::warn("Loading mods from legacy directory '{}'. This path is deprecated; move mods into the packages directory.", m_LegacyRoot);
-			m_WarnedAboutLegacyRoot = true;
-		}
-		m_Directories.push_back(directory);
-	}
+            spdlog::warn("Loading mods from legacy directory '{}'. This path is deprecated; move mods into the packages directory.", m_LegacyRoot);
+            m_WarnedAboutLegacyRoot = true;
+        }
+        m_Directories.push_back(directory);
+    }
 
-private:
-	std::vector<fs::path>& m_Directories;
+  private:
+    std::vector<fs::path>& m_Directories;
     fs::path m_LegacyRoot;
     bool m_WarnedAboutLegacyRoot = false;
 };
@@ -115,9 +120,12 @@ private:
 ModManager::ModManager(const CModule& engineModule)
 {
     m_pModelLoader = engineModule.Offset(0x7C4C20).RCast<CModelLoader*>();
+    s_GetModelCount = engineModule.Offset(0xC4530).RCast<decltype(s_GetModelCount)>();
+    s_GetModelByIndex = engineModule.Offset(0xC46C0).RCast<decltype(s_GetModelByIndex)>();
+    s_UnloadModel = engineModule.Offset(0xCF1A0).RCast<decltype(s_UnloadModel)>();
     cfgPath = GetNorthstarPrefix() + "/enabledmods.json";
 
-	// precaculated string hashes
+    // precaculated string hashes
     // note: use backslashes for these, since we use lexically_normal for file paths which uses them
     m_hScriptsRsonHash = STR_HASH("scripts\\vscripts\\scripts.rson");
     m_hPdefHash =
@@ -215,76 +223,76 @@ void ModManager::ReloadMods()
 
 bool ModManager::UnloadModsForFilesystemMutation()
 {
-	if (!m_bHasLoadedMods)
-		return true;
+    if (!m_bHasLoadedMods)
+        return true;
 
-	const bool unloaded = UnloadMods(true);
-	m_bRuntimeUnloadedForFilesystemMutation = true;
-	if (!unloaded)
-		LoadMods();
-	return unloaded;
+    const bool unloaded = UnloadMods(true);
+    m_bRuntimeUnloadedForFilesystemMutation = true;
+    if (!unloaded)
+        LoadMods();
+    return unloaded;
 }
 
 std::unordered_map<std::string, bool> ModManager::CaptureEnabledStatesForPackages(std::span<const fs::path> packageRoots) const
 {
-	std::unordered_map<std::string, bool> states;
-	for (const Mod& mod : m_LoadedMods)
-	{
-		for (const fs::path& root : packageRoots)
-		{
+    std::unordered_map<std::string, bool> states;
+    for (const Mod& mod : m_LoadedMods)
+    {
+        for (const fs::path& root : packageRoots)
+        {
             const bool belongsToPackage =
                 ModPaths::IsAtOrBelow(mod.m_ModDirectory, root) || (!mod.m_PackageDirectory.empty() && ModPaths::Equal(mod.m_PackageDirectory, root));
             if (belongsToPackage)
-			{
-				states.insert_or_assign(mod.Name, mod.m_bEnabled);
-				break;
-			}
-		}
-	}
-	return states;
+            {
+                states.insert_or_assign(mod.Name, mod.m_bEnabled);
+                break;
+            }
+        }
+    }
+    return states;
 }
 
 void ModManager::ReloadModsWithEnabledStates(std::unordered_map<std::string, bool> enabledStates)
 {
-	m_EnabledStateOverrides = std::move(enabledStates);
-	LoadMods();
-	m_EnabledStateOverrides.clear();
+    m_EnabledStateOverrides = std::move(enabledStates);
+    LoadMods();
+    m_EnabledStateOverrides.clear();
 }
 
 bool ModManager::HasLoadedPackageMods(const fs::path& packageRoot, std::span<const std::string> expectedModNames) const
 {
-	const fs::path normalizedRoot = packageRoot.lexically_normal();
-	for (const std::string& expectedName : expectedModNames)
-	{
-		bool found = false;
-		for (const Mod& mod : m_LoadedMods)
-		{
-			if (mod.Name == expectedName && mod.m_PackageDirectory.lexically_normal() == normalizedRoot)
-			{
-				found = true;
-				break;
-			}
-		}
-		if (!found)
-			return false;
-	}
-	return true;
+    const fs::path normalizedRoot = packageRoot.lexically_normal();
+    for (const std::string& expectedName : expectedModNames)
+    {
+        bool found = false;
+        for (const Mod& mod : m_LoadedMods)
+        {
+            if (mod.Name == expectedName && mod.m_PackageDirectory.lexically_normal() == normalizedRoot)
+            {
+                found = true;
+                break;
+            }
+        }
+        if (!found)
+            return false;
+    }
+    return true;
 }
 
 void ModManager::LoadMods()
 {
     const bool wasLoaded = m_bHasLoadedMods;
     if (m_bRuntimeUnloadedForFilesystemMutation)
-	{
-		m_bRuntimeUnloadedForFilesystemMutation = false;
-	}
-	else if (wasLoaded && !UnloadMods(false))
-	{
-		spdlog::error("Could not reload mods because the current mod assets did not unload cleanly");
-		return;
-	}
+    {
+        m_bRuntimeUnloadedForFilesystemMutation = false;
+    }
+    else if (wasLoaded && !UnloadMods(false))
+    {
+        spdlog::error("Could not reload mods because the current mod assets did not unload cleanly");
+        return;
+    }
 
-	// Find all mods from disk
+    // Find all mods from disk
     DiscoverMods();
 
     m_CompiledFiles.clear();
@@ -342,8 +350,12 @@ void ModManager::LoadMods()
                     bUseVPKJson = !dVpkJson.HasParseError() && dVpkJson.IsObject();
                 }
 
+                const bool invalidMapOnly = bUseVPKJson && dVpkJson.HasMember("MapOnly") && !dVpkJson["MapOnly"].IsObject();
+
                 for (fs::directory_entry file : fs::directory_iterator(mod.m_ModDirectory / "vpk"))
                 {
+                    if (invalidMapOnly)
+                        break;
                     // a bunch of checks to make sure we're only adding dir vpks and their paths are good
                     // note: the game will literally only load vpks with the english prefix
                     const fs::path filename = file.path().filename();
@@ -356,12 +368,36 @@ void ModManager::LoadMods()
                         // this really fucking sucks but it'll work
                         std::string vpkName = formattedPath.substr(strlen("english"), formattedPath.find(".bsp") - 3);
 
-                        ModVPKEntry& modVpk = mod.Vpks.emplace_back();
+                        ModVPKEntry modVpk;
                         modVpk.m_bAutoLoad = !bUseVPKJson || (dVpkJson.HasMember("Preload") && dVpkJson["Preload"].IsObject() &&
                                                               dVpkJson["Preload"].HasMember(vpkName) && dVpkJson["Preload"][vpkName].IsTrue());
                         modVpk.m_sVpkPath = (file.path().parent_path() / vpkName).string();
-
-                        VPKDirectory_GetFileList(file.path(), "mdl", modVpk.m_ModelPaths);
+                        if (bUseVPKJson && dVpkJson.HasMember("MapOnly") && dVpkJson["MapOnly"].HasMember(vpkName))
+                        {
+                            const auto& owner = dVpkJson["MapOnly"][vpkName];
+                            if (!owner.IsString() || !owner.GetStringLength() ||
+                                !std::all_of(owner.GetString(), owner.GetString() + owner.GetStringLength(), [](const unsigned char c)
+                            { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_'; }))
+                            {
+                                spdlog::error("Ignoring VPK '{}': MapOnly owner must be an exact map name without path or extension", vpkName);
+                                continue;
+                            }
+                            modVpk.m_MapName = NormaliseModFilePath(owner.GetString());
+                            modVpk.m_bAutoLoad = false;
+                            if (!VPKDirectory_GetFileList(file.path(), {}, modVpk.m_FilePaths))
+                            {
+                                spdlog::error("Ignoring map-only VPK '{}': cannot index archive members for source-cache isolation", vpkName);
+                                continue;
+                            }
+                            for (std::string& path : modVpk.m_FilePaths)
+                            {
+                                path = NormaliseModelLookupPath(path);
+                                if (path.ends_with(".mdl"))
+                                    modVpk.m_ModelPaths.push_back(path);
+                            }
+                        }
+                        else
+                            VPKDirectory_GetFileList(file.path(), "mdl", modVpk.m_ModelPaths);
 
                         bool modelsAvailable = IsVPKMounted(modVpk.m_sVpkPath.c_str());
                         if (modVpk.m_bAutoLoad)
@@ -374,6 +410,7 @@ void ModManager::LoadMods()
 
                         if (modelsAvailable)
                             RegisterMountedVPKModels(modVpk);
+                        mod.Vpks.push_back(std::move(modVpk));
                     }
                 }
             }
@@ -627,9 +664,9 @@ bool ModManager::UnloadMods(bool unloadRpaksNow)
     // clean up stuff from mods before we unload
     m_DependencyConstants.clear();
 
-	bool unloadedAll = RemoveModSearchPaths();
-	if (!unloadedAll)
-		spdlog::warn("Failed removing mod filesystem search paths");
+    bool unloadedAll = RemoveModSearchPaths();
+    if (!unloadedAll)
+        spdlog::warn("Failed removing mod filesystem search paths");
 
     std::unordered_set<std::string> staleVPKModelFiles;
 
@@ -637,13 +674,13 @@ bool ModManager::UnloadMods(bool unloadRpaksNow)
     {
         for (const ModVPKEntry& vpkEntry : mod.Vpks)
         {
-			staleVPKModelFiles.insert(vpkEntry.m_ModelPaths.begin(), vpkEntry.m_ModelPaths.end());
-			if (IsVPKMounted(vpkEntry.m_sVpkPath.c_str()) && !UnmountVPKDirect(vpkEntry.m_sVpkPath.c_str()))
-			{
-				spdlog::warn("Failed unmounting mod VPK '{}'", vpkEntry.m_sVpkPath);
-				unloadedAll = false;
-			}
-		}
+            staleVPKModelFiles.insert(vpkEntry.m_ModelPaths.begin(), vpkEntry.m_ModelPaths.end());
+            if (IsVPKMounted(vpkEntry.m_sVpkPath.c_str()) && !UnmountVPKDirect(vpkEntry.m_sVpkPath.c_str()))
+            {
+                spdlog::warn("Failed unmounting mod VPK '{}'", vpkEntry.m_sVpkPath);
+                unloadedAll = false;
+            }
+        }
     }
 
     // Enabled paths are rediscovered below; retain old paths for cache eviction.
@@ -654,6 +691,8 @@ bool ModManager::UnloadMods(bool unloadRpaksNow)
         m_ModModelFiles.clear();
         m_ModLooseModelFiles.clear();
         m_ModVpkModelSources.clear();
+        m_RegisteredVPKs.clear();
+        m_MapVpkFileSources.clear();
     }
     m_ModFiles.clear();
     m_CompiledFiles.clear();
@@ -665,20 +704,20 @@ bool ModManager::UnloadMods(bool unloadRpaksNow)
 
     g_ModAudioManager.Clear();
     if (g_pPakLoadManager != nullptr)
-	{
-		g_pPakLoadManager->UnloadAllModPaks();
-		if (unloadRpaksNow)
-		{
-			if (!g_pPakLoadManager->UnloadMarkedPaks())
-			{
-				spdlog::warn("Failed unloading one or more mod RPaks");
-				unloadedAll = false;
-			}
-			g_pPakLoadManager->CleanUpUnloadedPaks();
-		}
-	}
+    {
+        g_pPakLoadManager->UnloadAllModPaks();
+        if (unloadRpaksNow)
+        {
+            if (!g_pPakLoadManager->UnloadMarkedPaks())
+            {
+                spdlog::warn("Failed unloading one or more mod RPaks");
+                unloadedAll = false;
+            }
+            g_pPakLoadManager->CleanUpUnloadedPaks();
+        }
+    }
 
-	if (!m_bHasEnabledModsCfg)
+    if (!m_bHasEnabledModsCfg)
         m_EnabledModsCfg.SetObject();
 
     for (Mod& mod : m_LoadedMods)
@@ -695,7 +734,7 @@ bool ModManager::UnloadMods(bool unloadRpaksNow)
 
     // do we need to dealloc individual entries in m_loadedMods? idk, rework
     m_LoadedMods.clear();
-	return unloadedAll;
+    return unloadedAll;
 }
 
 void ModManager::SearchFilesystemForMods()
@@ -707,7 +746,7 @@ void ModManager::SearchFilesystemForMods()
     fs::path classicPath = GetModFolderPath();
     fs::path remotePath = GetRemoteModFolderPath();
     fs::path packagesPath = GetPackageFolderPath();
-	CModDirectoryCollector collector(modDirs, classicPath);
+    CModDirectoryCollector collector(modDirs, classicPath);
 
     for (const fs::path& searchPath : {classicPath, remotePath, packagesPath})
     {
@@ -718,7 +757,7 @@ void ModManager::SearchFilesystemForMods()
         for (fs::directory_entry dir : fs::directory_iterator(searchPath, ec))
         {
             if (!ec && fs::exists(dir.path() / "mod.json"))
-				collector.Add(dir.path());
+                collector.Add(dir.path());
         }
     }
 
@@ -745,7 +784,7 @@ void ModManager::SearchFilesystemForMods()
             for (fs::directory_entry subDir : fs::directory_iterator(modsDir, ec))
             {
                 if (!ec && fs::exists(subDir.path() / "mod.json"))
-					collector.Add(subDir.path());
+                    collector.Add(subDir.path());
             }
         }
     }
@@ -1063,9 +1102,9 @@ void ModManager::DiscoverMods()
         rapidjson::PrettyWriter<rapidjson::OStreamWrapper> writer(writeStreamWrapper);
         m_EnabledModsCfg.Accept(writer);
     }
-	CModWorkshopInventory::Get().RefreshLocal();
-	if (!IsDedicatedServer())
-		CModWorkshopService::Get().RefreshTrackedMods(true);
+    CModWorkshopInventory::Get().RefreshLocal();
+    if (!IsDedicatedServer())
+        CModWorkshopService::Get().RefreshTrackedMods(true);
 }
 
 void ModManager::BuildModInfo()
@@ -1192,19 +1231,7 @@ void ModManager::RunModelReload()
     if (modelPaths.empty())
         return;
 
-    std::unordered_set<std::string> failedPaths;
-    for (const std::string& path : modelPaths)
-    {
-        const MDLHandle_t handle = g_pMDLCache->FindExistingMDL(path.c_str());
-        m_pModelLoader->FlushModelByName(path.c_str());
-
-        if (handle != InvalidMDLHandle)
-        {
-            if (!g_pMDLCache->FlushCacheByHandle(handle))
-                failedPaths.insert(path);
-            g_pMDLCache->Release(handle);
-        }
-    }
+    const auto failedPaths = FlushModelPaths(modelPaths);
 
     m_pModelLoader->RetouchModels(ModelReloadType_t::RefreshModels);
 
@@ -1215,15 +1242,229 @@ void ModManager::RunModelReload()
         spdlog::warn("Failed to flush {} model cache entries", failedPaths.size());
 }
 
+std::unordered_set<std::string> ModManager::FlushModelPaths(std::span<const std::string> paths)
+{
+    std::unordered_set<std::string> failedPaths;
+    for (const std::string& path : paths)
+    {
+        const MDLHandle_t handle = g_pMDLCache->FindExistingMDL(path.c_str());
+        m_pModelLoader->FlushModelByName(path.c_str());
+        if (handle != InvalidMDLHandle)
+        {
+            if (!g_pMDLCache->FlushCacheByHandle(handle))
+                failedPaths.insert(path);
+            g_pMDLCache->Release(handle);
+        }
+    }
+    return failedPaths;
+}
+
 void ModManager::RegisterMountedVPKModels(const ModVPKEntry& vpkEntry)
 {
     std::scoped_lock lock(m_ModelReloadMutex);
+    m_RegisteredVPKs.insert(NormaliseModFilePath(vpkEntry.m_sVpkPath));
+    for (const std::string& path : vpkEntry.m_FilePaths)
+    {
+        m_MapVpkFileSources.try_emplace(path, vpkEntry.m_sVpkPath);
+        m_MapVpkCacheBypassFiles.insert(path);
+    }
     for (const std::string& modelPath : vpkEntry.m_ModelPaths)
     {
         m_ModModelFiles.insert(modelPath);
 
         m_ModVpkModelSources.try_emplace(modelPath, vpkEntry.m_sVpkPath);
     }
+}
+
+void ModManager::UnregisterMountedVPKModels(const char* vpkPath)
+{
+    if (!vpkPath)
+        return;
+    const std::string sourcePath = NormaliseModFilePath(vpkPath);
+    std::scoped_lock lock(m_ModelReloadMutex);
+    if (!m_RegisteredVPKs.erase(sourcePath))
+        return;
+
+    for (const auto& [path, source] : m_ModVpkModelSources)
+    {
+        if (NormaliseModFilePath(source) == sourcePath)
+            m_StaleModModelFiles.insert(path);
+    }
+    for (const Mod& mod : m_LoadedMods)
+    {
+        for (const ModVPKEntry& entry : mod.Vpks)
+        {
+            if (!entry.m_MapName.empty() && NormaliseModFilePath(entry.m_sVpkPath) == sourcePath)
+            {
+                m_StaleMapVpkModelFiles.insert(entry.m_ModelPaths.begin(), entry.m_ModelPaths.end());
+            }
+        }
+    }
+    m_ModModelFiles = m_ModLooseModelFiles;
+    m_ModVpkModelSources.clear();
+    m_MapVpkFileSources.clear();
+    for (const Mod& mod : m_LoadedMods)
+    {
+        if (!mod.m_bEnabled)
+            continue;
+        for (const ModVPKEntry& entry : mod.Vpks)
+        {
+            if (!m_RegisteredVPKs.contains(NormaliseModFilePath(entry.m_sVpkPath)))
+                continue;
+            for (const std::string& path : entry.m_ModelPaths)
+            {
+                m_ModModelFiles.insert(path);
+                m_ModVpkModelSources.try_emplace(path, entry.m_sVpkPath);
+            }
+            for (const std::string& path : entry.m_FilePaths)
+                m_MapVpkFileSources.try_emplace(path, entry.m_sVpkPath);
+        }
+    }
+}
+
+bool ModManager::IsMapVPKCacheFile(const fs::path& path) const
+{
+    const std::string filePath = NormaliseModelLookupPath(path);
+    std::scoped_lock lock(m_ModelReloadMutex);
+    return m_MapVpkCacheBypassFiles.contains(filePath);
+}
+
+bool ModManager::GetMapVPKFileSource(const fs::path& path, std::string& vpkPath) const
+{
+    const std::string filePath = NormaliseModelLookupPath(path);
+    std::scoped_lock lock(m_ModelReloadMutex);
+    const auto source = m_MapVpkFileSources.find(filePath);
+    if (source == m_MapVpkFileSources.end())
+        return false;
+    vpkPath = source->second;
+    return true;
+}
+
+bool ModManager::NeedsMapVPKTransition(const char* mapName, bool forceReload) const
+{
+    const std::string nextMap = NormaliseModFilePath(mapName);
+    for (const Mod& mod : m_LoadedMods)
+    {
+        for (const ModVPKEntry& entry : mod.Vpks)
+        {
+            if (entry.m_MapName.empty())
+                continue;
+            const bool mounted = IsVPKMounted(entry.m_sVpkPath.c_str());
+            const bool expected = mod.m_bEnabled && entry.m_MapName == nextMap;
+            if (mounted != expected || (forceReload && (mounted || expected)))
+                return true;
+        }
+    }
+    std::scoped_lock lock(m_ModelReloadMutex);
+    return !m_StaleMapVpkModelFiles.empty();
+}
+
+bool ModManager::PrepareMapVPKs(const char* mapName)
+{
+    const std::string nextMap = NormaliseModFilePath(mapName);
+    std::unordered_set<std::string> affectedModels;
+    std::vector<const ModVPKEntry*> mounted;
+    for (const Mod& mod : m_LoadedMods)
+    {
+        for (const ModVPKEntry& entry : mod.Vpks)
+        {
+            if (entry.m_MapName.empty())
+                continue;
+            const bool isMounted = IsVPKMounted(entry.m_sVpkPath.c_str());
+            if (isMounted)
+                mounted.push_back(&entry);
+            if (isMounted || (mod.m_bEnabled && entry.m_MapName == nextMap))
+                affectedModels.insert(entry.m_ModelPaths.begin(), entry.m_ModelPaths.end());
+        }
+    }
+    {
+        std::scoped_lock lock(m_ModelReloadMutex);
+        affectedModels.insert(m_StaleMapVpkModelFiles.begin(), m_StaleMapVpkModelFiles.end());
+    }
+    if (mounted.empty() && affectedModels.empty())
+        return true;
+
+    if ((!affectedModels.empty() && (!m_pModelLoader || !g_pMDLCache)) || !g_pPakLoadManager || !g_pPakLoadManager->TryAcquireIdlePakLock())
+    {
+        return false;
+    }
+    const ScopeGuard pakLockGuard([&]() { g_pPakLoadManager->ReleasePakLock(); });
+    if (g_pPakLoadManager->HasUnsafeLoadedPaks())
+        return false;
+
+    size_t retiredModels = 0;
+    if (!affectedModels.empty())
+    {
+        const int modelCount = s_GetModelCount(m_pModelLoader);
+        for (int index = 0; index < modelCount; ++index)
+        {
+            model_t* const model = s_GetModelByIndex(m_pModelLoader, index);
+            if (model->m_Type != mod_studio || !affectedModels.contains(NormaliseModelLookupPath(model->m_PathName)))
+                continue;
+            s_UnloadModel(m_pModelLoader, model);
+            ++retiredModels;
+        }
+    }
+
+    for (const ModVPKEntry* entry : mounted)
+    {
+        if (!UnmountVPKDirect(entry->m_sVpkPath.c_str()))
+            return false;
+        spdlog::info("Unmounted map-only VPK '{}' before '{}'", entry->m_sVpkPath, nextMap);
+    }
+    const std::vector<std::string> paths(affectedModels.begin(), affectedModels.end());
+    const auto failedPaths = FlushModelPaths(paths);
+    {
+        std::scoped_lock lock(m_ModelReloadMutex);
+        for (const std::string& path : paths)
+        {
+            if (failedPaths.contains(path))
+            {
+                m_StaleModModelFiles.insert(path);
+                m_StaleMapVpkModelFiles.insert(path);
+            }
+            else
+            {
+                m_StaleModModelFiles.erase(path);
+                m_StaleMapVpkModelFiles.erase(path);
+            }
+        }
+    }
+
+    return failedPaths.empty();
+}
+
+bool ModManager::MountMapVPKs(const char* mapName)
+{
+    const std::string nextMap = NormaliseModFilePath(mapName);
+    std::vector<const ModVPKEntry*> mounted;
+
+    for (const Mod& mod : m_LoadedMods)
+    {
+        if (!mod.m_bEnabled)
+            continue;
+
+        for (const ModVPKEntry& entry : mod.Vpks)
+        {
+            if (entry.m_MapName != nextMap)
+                continue;
+            if (!MountVPKDirect(entry.m_sVpkPath.c_str()))
+            {
+                for (auto mountedEntry = mounted.rbegin(); mountedEntry != mounted.rend(); ++mountedEntry)
+                {
+                    UnregisterMountedVPKModels((*mountedEntry)->m_sVpkPath.c_str());
+                    UnmountVPKDirect((*mountedEntry)->m_sVpkPath.c_str());
+                }
+                return false;
+            }
+
+            RegisterMountedVPKModels(entry);
+            mounted.push_back(&entry);
+            spdlog::info("Mounted map-only VPK '{}' for '{}' ({} files, {} models)", entry.m_sVpkPath, nextMap, entry.m_FilePaths.size(),
+                         entry.m_ModelPaths.size());
+        }
+    }
+    return true;
 }
 
 std::string ModManager::NormaliseModelLookupPath(const fs::path& path) const
@@ -1372,6 +1613,10 @@ fs::path GetCompiledAssetsPath()
 {
     return fs::path(GetNorthstarPrefix()) / COMPILED_ASSETS_SUFFIX;
 }
+fs::path GetGeneratedAssetsPath()
+{
+    return fs::path(GetNorthstarPrefix()) / "generated";
+}
 fs::path GetModIconPath()
 {
     return fs::path(GetNorthstarPrefix()) / MOD_ICONS_SUFFIX;
@@ -1380,11 +1625,10 @@ fs::path GetModIconPath()
 ON_DLL_LOAD_RELIESON("engine.dll", ModManager, (ConCommand, MasterServer, EngineKeyValues), [](CModule module)
 {
     g_pModManager = new ModManager(module);
-	if (const std::optional<uint64_t> pendingUriInstall = CModShellExtension::Get().TakePendingWorkshopInstall())
-		CModInstallService::Get().Request(ModInstallAction::Replace, *pendingUriInstall);
+    if (const std::optional<uint64_t> pendingUriInstall = CModShellExtension::Get().TakePendingWorkshopInstall())
+        CModInstallService::Get().Request(ModInstallAction::Replace, *pendingUriInstall);
 
     RegisterConCommand("reload_mods", ConCommand_reload_mods, "reloads mods", FCVAR_NONE);
-    RegisterConCommand(
-        "ns_dump_compiled_keyvalues", ConCommand_dump_compiled_keyvalues,
-        "Writes resolved compiled KeyValues to runtime/compiled_keyvalues_dump.", FCVAR_DONTRECORD);
+    RegisterConCommand("ns_dump_compiled_keyvalues", ConCommand_dump_compiled_keyvalues,
+                       "Writes resolved compiled KeyValues to runtime/compiled_keyvalues_dump.", FCVAR_DONTRECORD);
 })

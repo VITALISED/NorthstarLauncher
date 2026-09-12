@@ -3,6 +3,7 @@
 #include "tier1/convar.h"
 #include "server/serverpresence.h"
 #include "engine/net.h"
+#include <atomic>
 #include <cstring>
 #include <future>
 #include <string>
@@ -94,10 +95,10 @@ public:
 
 	std::string m_sOwnModInfoJson;
 
-	bool m_bOriginAuthWithMasterServerDone = false;
-	bool m_bOriginAuthWithMasterServerInProgress = false;
+	std::atomic_bool m_bOriginAuthWithMasterServerDone = false;
+	std::atomic_bool m_bOriginAuthWithMasterServerInProgress = false;
 
-	bool m_bOriginAuthWithMasterServerSuccessful = false;
+	std::atomic_bool m_bOriginAuthWithMasterServerSuccessful = false;
 	std::string m_sOriginAuthWithMasterServerErrorCode = "";
 	std::string m_sOriginAuthWithMasterServerErrorMessage = "";
 

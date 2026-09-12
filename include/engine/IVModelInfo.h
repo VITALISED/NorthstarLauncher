@@ -1,6 +1,6 @@
 #pragma once
 
-#include "game/client/iclientrenderable.h"
+#include "client/iclientrenderable.h"
 #include <cstddef>
 #include <cstdint>
 
