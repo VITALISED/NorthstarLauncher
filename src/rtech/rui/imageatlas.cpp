@@ -556,12 +556,16 @@ void CImageAtlas::InitializeEngineBindings(CModule module)
     s_RemoveDescriptor = module.Offset(0xF3E30).RCast<RHashMapU32RemoveExistingFn>();
 }
 
-ON_DLL_LOAD("engine.dll", RuiImageAtlasEngine, [](CModule module) { CImageAtlas::InitializeEngineBindings(module); })
+ON_DLL_LOAD("engine.dll", RuiImageAtlasEngine, [](CModule module)
+{
+    RuiImageAtlasHooks.DispatchForModule("engine.dll");
+    CImageAtlas::InitializeEngineBindings(module);
+})
 
 ON_DLL_LOAD("rtech_game.DLL", RuiImageAtlasRtech, [](CModule module)
 {
     (void)module;
-    DISPATCH_MODULE(RuiImageAtlasHooks);
+    RuiImageAtlasHooks.DispatchForModule("rtech_game.DLL");
 })
 
 uint32_t CImageAtlas::ClampBlockFloor(double pixel, uint32_t blockCount)
