@@ -44,6 +44,31 @@ using BaseFileSystemSizeByNameFn = std::int64_t(__fastcall*)(IBaseFileSystem*, c
 static BaseFileSystemSizeByNameFn s_BaseFileSystemSizeByName = nullptr;
 static constexpr std::size_t BASE_FILESYSTEM_SIZE_BY_NAME_VTABLE_INDEX = 6;
 
+static void* s_GetStudioHdrCacheReturnAddress = nullptr;
+
+struct StudioFileCacheEntry
+{
+    std::uintptr_t bufferOrHandle;
+    std::uint64_t reserved;
+    std::uint32_t size;
+    volatile long lock;
+    std::uint32_t flags;
+    std::uint32_t index;
+};
+
+struct StudioFileCacheResult
+{
+    std::uint64_t source;
+    void* metadata;
+    StudioFileCacheEntry* entry;
+};
+
+static_assert(sizeof(StudioFileCacheEntry) == 0x20);
+static_assert(offsetof(StudioFileCacheEntry, lock) == 0x14);
+static_assert(offsetof(StudioFileCacheEntry, flags) == 0x18);
+static_assert(sizeof(StudioFileCacheResult) == 0x18);
+static_assert(offsetof(StudioFileCacheResult, entry) == 0x10);
+
 std::string ReadVPKFile(const char* path)
 {
     if (!g_pFilesystem || !path)
@@ -199,7 +224,22 @@ DECLARE_HOOK(ReadFromCache, filesystem_stdio.dll + 0xFE50, [](auto& hook, IFileS
     if (TryReplaceFile(pPath, true, "GAME") || isReloadModel || g_pModManager->IsMapVPKCacheFile(pPath))
         return false;
 
-    return hook.Original(filesystem, pPath, result);
+    const bool studioHeaderRead = hook.ReturnAddress() == s_GetStudioHdrCacheReturnAddress;
+    if (!hook.Original(filesystem, pPath, result))
+        return false;
+
+    if (studioHeaderRead)
+    {
+        auto* entry = static_cast<StudioFileCacheResult*>(result)->entry;
+        while (_InterlockedCompareExchange(&entry->lock, 1, 0) != 0)
+            YieldProcessor();
+        const bool transferred = (entry->flags & 1) != 0;
+        _InterlockedExchange(&entry->lock, 0);
+
+        if (transferred)
+            return false;
+    }
+    return true;
 })
 
 static std::string NormaliseVPKPath(const char* path)
@@ -355,6 +395,8 @@ DECLARE_HOOK(MountVPK, filesystem_stdio.dll + 0xBEA0, [](auto& hook, IFileSystem
 
     return ret;
 })
+
+ON_DLL_LOAD("datacache.dll", FilesystemStudioCache, [](CModule module) { s_GetStudioHdrCacheReturnAddress = module.Offset(0x5B51C).RCast<void*>(); })
 
 ON_DLL_LOAD("filesystem_stdio.dll", Filesystem, [](CModule)
 {
