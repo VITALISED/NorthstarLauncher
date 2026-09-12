@@ -5,6 +5,35 @@
 
 class CDemoFile;
 
+class IDemoRecorder
+{
+public:
+	virtual ~IDemoRecorder() = default;
+	virtual CDemoFile* GetDemoFile() = 0;
+	virtual int GetRecordingTick() = 0;
+	virtual void StartRecording(const char* filename) = 0;
+	virtual void SetSignonState(int state, bool wasFullUpdate) = 0;
+	virtual bool IsRecording() = 0;
+private:
+	virtual void Reserved006() = 0;
+	virtual void Reserved007() = 0;
+public:
+	virtual void StopRecording() = 0;
+	virtual void RecordCommand(const char* command) = 0;
+	virtual void RecordUserInput(int commandNumber) = 0;
+private:
+	virtual void Reserved011() = 0;
+	virtual void Reserved012() = 0;
+	virtual void Reserved013() = 0;
+	virtual void Reserved014() = 0;
+	virtual void Reserved015() = 0;
+	virtual void Reserved016() = 0;
+	virtual void Reserved017() = 0;
+	virtual void Reserved018() = 0;
+	virtual void Reserved019() = 0;
+	virtual void Reserved020() = 0;
+};
+
 class CDemoPlayer
 {
 public:

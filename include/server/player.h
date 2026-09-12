@@ -10,6 +10,84 @@ struct SV_CUserCmd;
 class CPlayer : public CBaseCombatCharacter
 {
   public:
+    // Retail server.dll primary vtable: 352 slots at RVA 0x9524F8.
+    ServerClass* GetServerClass() override = 0; // 3
+    ServerDataMap* GetDataDescMap() override = 0; // 5
+    ScriptClassDesc_t* GetScriptDesc() override = 0; // 6
+    void Spawn() override = 0; // 23
+    void Precache() override = 0; // 24
+    int OnTakeDamage(const CTakeDamageInfo& info) override = 0; // 60
+    int TakeHealth(float health, int damageType) override = 0; // 62
+    void Event_Killed(const CTakeDamageInfo& info) override = 0; // 63
+    void Event_KilledOther(CBaseEntity* victim, const CTakeDamageInfo& info) override = 0; // 64
+    bool ChangeTeam(int team) override = 0; // 104
+    void Touch(CBaseEntity* other) override = 0; // 111
+    void DrawDebugGeometryOverlays() override = 0; // 34
+    void DrawDebugTextOverlays() override = 0; // 35
+    int Save(ISave& save) override = 0; // 36
+    int Restore(IRestore& restore) override = 0; // 37
+    void OnRestore() override = 0; // 40
+    bool IsPlayer() const override = 0; // 83
+    bool IsTitan() const override = 0; // 84
+    void PhysicsSimulate() override = 0; // 116
+    void UpdateOnRemove() override = 0; // 117
+    Vector3 EyePosition() override = 0; // 133
+    Vector3 EarPosition() override = 0; // 134
+    QAngle EyeAngles() override = 0; // 135
+    QAngle LocalEyeAngles() override = 0; // 136
+    Vector3 GetSmoothedVelocity() override = 0; // 141
+    void GetVelocity(Vector3* velocity, Vector3* angularVelocity) override = 0; // 142
+    float GetGravity() const override = 0; // 143
+    const Vector3& WorldSpaceCenter() const override = 0; // 152
+    void VPhysicsDestroyObject() override = 0; // 157
+    unsigned int PhysicsSolidMaskForEntity() const override = 0; // 169
+    void HandleAnimEvent(animevent_t* event) override = 0; // 258
+    const impactdamagetable_t& GetPhysicsImpactDamageTable() override = 0; // 274
+    QAngle BodyAngles() const override = 0; // 280
+    Vector3 EyeDirection2D() override = 0; // 285
+    Vector3 EyeDirection3D() override = 0; // 286
+    float ScriptGetAttackSpreadAngle() override = 0; // 288
+    void ScriptGiveExistingWeapon(CBaseEntity* weapon) override = 0; // 289
+    bool Weapon_Detach(CBaseCombatWeapon* weapon) override = 0; // 292
+    bool Weapon_Switch(CBaseCombatWeapon* weapon) override = 0; // 293
+    bool Weapon_IsPlaying3pEquipActivity() const override = 0; // 295
+    bool Weapon_IsPlaying3pReloadActivity() const override = 0; // 296
+    Vector3 Weapon_ShootPosition() override = 0; // 297
+    const char* GetWeaponClass() const override = 0; // 298
+    void Weapon_StartGestureAnim(int activity, float duration, bool autokill) override = 0; // 302
+    void Weapon_EndGestureAnim(int activity, float fadeOut) override = 0; // 303
+    void ScriptTakeWeapon(const char* weaponName) override = 0; // 304
+    void ScriptTakeWeaponNow(const char* weaponName) override = 0; // 305
+    Vector3 ScriptGetPlayerOrNPCViewVector() override = 0; // 306
+    Vector3 ScriptGetPlayerOrNPCViewForward() override = 0; // 307
+    Vector3 ScriptGetPlayerOrNPCViewUp() override = 0; // 308
+    Vector3 ScriptGetPlayerOrNPCViewRight() override = 0; // 309
+    void SetOutOfBoundsDeadTime(float time) override = 0; // 310
+    float GetOutOfBoundsDeadTime() override = 0; // 311
+    int ScriptGiveWeapon(SQVM* vm) override = 0; // 312
+    void GrappleDetach() override = 0; // 314
+    int OnTakeDamage_Alive(const CTakeDamageInfo& info) override = 0; // 315
+    void Event_Dying() override = 0; // 320
+    float GetHullWidth() const override = 0; // 324
+    float GetHullHeight() const override = 0; // 325
+    bool PlayerMelee_ExecutionStartAttacker(float duration) override = 0; // 336
+    bool PlayerMelee_ExecutionStartTarget(CBaseEntity* attacker) override = 0; // 337
+    bool PlayerMelee_ExecutionEndAttacker() override = 0; // 338
+    bool PlayerMelee_ExecutionEndTarget() override = 0; // 339
+    void Event_LeechEnd() override = 0; // 342
+  protected:
+    virtual void ReservedEntitySlot343() = 0; // 343
+    virtual void ReservedEntitySlot344() = 0; // 344
+    virtual void ReservedEntitySlot345() = 0; // 345
+    virtual void ReservedEntitySlot346() = 0; // 346
+    virtual void ReservedEntitySlot347() = 0; // 347
+    virtual void ReservedEntitySlot348() = 0; // 348
+    virtual void ReservedEntitySlot349() = 0; // 349
+    virtual void ReservedEntitySlot350() = 0; // 350
+    virtual void ReservedEntitySlot351() = 0; // 351
+  public:
+
+    // Direct native method at server.dll + 0x5D52F0, not a vtable slot.
     void ItemPostFrame();
 
     std::byte m_Reserved1498[0x100];

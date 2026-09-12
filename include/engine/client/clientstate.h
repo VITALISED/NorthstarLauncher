@@ -21,11 +21,6 @@ class CClientState;
 extern char* g_pLocalPlayerUserID;
 extern char* g_pLocalPlayerOriginToken;
 
-using CClientState__SendStringCmd_t = void (__fastcall*)(CClientState* self, const char* command);
-extern CClientState__SendStringCmd_t CClientState__SendStringCmd;
-
-typedef bool (*CPlayer__IsMantling_t)(void* thisptr);
-extern CPlayer__IsMantling_t CPlayer__IsMantling;
 class SVC_Print;
 class SVC_ServerInfo;
 class CNetworkStringTableContainer;
@@ -356,7 +351,7 @@ public:
 	bool ProcessSignonStateInternal(eSignonState state, int serverCount, NET_SignonState* message);
 
 
-	inline void SendStringCmd(const char* command) { CClientState__SendStringCmd(this, command); }
+	void SendStringCmd(const char* command);
 
 	~CClientState() override;
 	bool ConnectionStart(CNetChan* channel) override;

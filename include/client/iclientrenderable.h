@@ -59,7 +59,7 @@ public:
 	virtual float GetModelScale() const = 0; // 21
 	virtual std::int32_t LookupAttachment(const char* pAttachmentName) = 0; // 22
 	virtual bool GetAttachment(std::int32_t number, matrix3x4_t& matrix) = 0; // 23
-	virtual bool GetAttachment(std::int32_t number, Vector3& origin, QAngle& angles) = 0; // 24
+	virtual bool GetAttachmentOriginAngles(std::int32_t number, Vector3& origin, QAngle& angles) = 0; // 24
 	virtual float* GetRenderClipPlane() = 0; // 25
 	virtual bool UsesPowerOfTwoFrameBufferTexture(std::int32_t splitScreenSlot) = 0; // 26
 	virtual bool UsesFullFrameBufferTexture(std::int32_t splitScreenSlot) = 0; // 27

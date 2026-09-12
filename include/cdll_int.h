@@ -133,7 +133,7 @@ public:
 	virtual bool GetPlayerView(void* pPlayerView) = 0; // 80
 	virtual void SetupGameProperties(void* pContexts, void* pProperties) = 0; // 81
 	virtual std::uint32_t GetPresenceID(const char* pIdName) = 0; // 82
-	virtual const char* GetPropertyIdString(std::uint32_t id) = 0; // 83
+	virtual void SetInputSampleTime(float frameTime) = 0; // 83
 	virtual void GetPropertyDisplayString(std::uint32_t id, std::uint32_t value,
 		char* pOutput, int outputSize) = 0; // 84
 	virtual void StartStatsReporting(void* pHandle, bool arbitrated) = 0; // 85

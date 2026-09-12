@@ -23,8 +23,8 @@ struct CGlobalVars;
 struct CSaveRestoreData;
 struct CStandardSendProxies;
 struct ServerClass;
-struct datamap_t;
-struct typedescription_t;
+struct ServerDataMap;
+struct ServerTypeDescription;
 
 inline constexpr char SERVER_GAME_DLL_INTERFACE_VERSION[] = "ServerGameDLL005";
 inline constexpr char SERVER_GAME_ENTS_INTERFACE_VERSION[] = "ServerGameEnts002";
@@ -90,9 +90,9 @@ public:
 	virtual const char* GetGameDescription() = 0;
 	virtual void CreateNetworkStringTables() = 0;
 	virtual void SaveWriteFields(CSaveRestoreData* saveData, const char* name, void* baseData,
-		datamap_t* dataMap, typedescription_t* fields, int fieldCount) = 0;
+		ServerDataMap* dataMap, ServerTypeDescription* fields, int fieldCount) = 0;
 	virtual void SaveReadFields(CSaveRestoreData* saveData, const char* name, void* baseData,
-		datamap_t* dataMap, typedescription_t* fields, int fieldCount) = 0;
+		ServerDataMap* dataMap, ServerTypeDescription* fields, int fieldCount) = 0;
 	virtual void SaveGlobalState(CSaveRestoreData* saveData) = 0;
 	virtual void RestoreGlobalState(CSaveRestoreData* saveData) = 0;
 	virtual void PreSave(CSaveRestoreData* saveData) = 0;

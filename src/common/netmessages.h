@@ -101,7 +101,7 @@ public:
 	virtual bool	IsReliable(void) const { return m_bReliable; }
 	virtual int		GetGroup(void) const { return m_nGroup; }
 	virtual CNetChan* GetNetChannel(void) const { return m_NetChannel; }
-	virtual int     MysteryReturn0() const { return 0; }
+	int GetSubChannel() const override { return 0; }
 
 	int m_nGroup;
 	bool m_bReliable;
@@ -130,6 +130,32 @@ public:
 	bf_read m_DataIn;
 	bf_write m_DataOut;
 };
+
+class CLC_ClientTick : public CNetMessage
+{
+public:
+	CLC_ClientTick();
+	bool Process() override;
+	bool ReadFromBuffer(bf_read* buffer) override;
+	bool WriteToBuffer(bf_write* buffer) override;
+	int GetType() const override { return static_cast<int>(NetMessageType::clc_ClientTick); }
+	const char* GetName() const override { return "clc_ClientTick"; }
+	const char* ToString() const override;
+	size_t GetSize() const override { return sizeof(*this); }
+
+	std::int32_t m_nDeltaTick;
+	std::int32_t m_nStringTableTick;
+	float m_flFrameTime;
+	float m_flFrameTimeStdDeviation;
+	std::uint8_t m_nServerCPU;
+};
+
+static_assert(sizeof(CLC_ClientTick) == 0x38);
+static_assert(offsetof(CLC_ClientTick, m_nDeltaTick) == 0x20);
+static_assert(offsetof(CLC_ClientTick, m_nStringTableTick) == 0x24);
+static_assert(offsetof(CLC_ClientTick, m_flFrameTime) == 0x28);
+static_assert(offsetof(CLC_ClientTick, m_flFrameTimeStdDeviation) == 0x2C);
+static_assert(offsetof(CLC_ClientTick, m_nServerCPU) == 0x30);
 
 static_assert(sizeof(CNetMessage) == 0x20);
 static_assert(offsetof(CNetMessage, m_nGroup) == 0x08);
