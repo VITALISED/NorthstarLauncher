@@ -196,14 +196,10 @@ static std::int64_t __fastcall BaseFileSystemSizeByName(IBaseFileSystem* fileSys
 
 DECLARE_HOOK(ReadFromCache, filesystem_stdio.dll + 0xFE50, [](auto& hook, IFileSystem* filesystem, const char* pPath, void* result) -> bool
 {
-    // Model reloads and map-owned files must use the selected GAME source.
     const bool isReloadModel = g_pModManager->IsModModelFile(pPath);
     if (TryReplaceFile(pPath, true, "GAME") || isReloadModel || g_pModManager->IsMapVPKCacheFile(pPath))
         return false;
 
-    // GetStudioHdr turns the borrowed cache buffer into an MDL handle after locking
-    // it. A pre-check cannot stay atomic with that transfer or pin the VPK node.
-    // Use its owned-buffer GAME read path instead of exposing the cache entry.
     if (hook.ReturnAddress() == s_GetStudioHdrCacheReturnAddress)
         return false;
 
